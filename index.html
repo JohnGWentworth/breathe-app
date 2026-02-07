@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Breathe | Mindfulness Pacer</title>
+    <meta name="description" content="Simple, ad-free breathing pacer. 4-7-8 for sleep, Box Breathing for focus.">
+    <meta name="theme-color" content="#2d3748">
+    <link rel="icon" type="image/png" href="icon-192.png">
+    <link rel="manifest" href="manifest.json">
+
+    <!-- Tailwind CSS (via CDN for speed) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        /* Custom Animations */
+        @keyframes fade-in-up {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes fade-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .breathing-circle {
+            transition: transform 4s ease-in-out, background-color 1s ease;
+            will-change: transform; 
+        }
+
+        /* Themes */
+        .theme-dark { --bg: #1a202c; --text: #e2e8f0; --circle: #4299e1; --circle-bg: #2b6cb0; --btn-bg: rgba(255,255,255,0.1); --focus: #63b3ed; }
+        .theme-light { --bg: #f7fafc; --text: #2d3748; --circle: #63b3ed; --circle-bg: #bee3f8; --btn-bg: rgba(0,0,0,0.05); --focus: #2b6cb0; }
+        .theme-nature { --bg: #22543d; --text: #f0fff4; --circle: #48bb78; --circle-bg: #2f855a; --btn-bg: rgba(255,255,255,0.15); --focus: #9ae6b4; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            transition: background-color 0.8s ease, color 0.8s ease;
+        }
+
+        .circle-visual {
+            background-color: var(--circle-bg);
+            border: 4px solid var(--circle);
+            box-shadow: 0 0 30px var(--circle);
+        }
+
+        /* Screen Management */
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.95);
+            z-index: -1;
+        }
+
+        .screen.visible {
+            opacity: 1;
+            transform: scale(1);
+            z-index: 10;
+        }
+
+        .animate-enter {
+            animation: fade-in-up 1s ease-out forwards;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            background-color: rgba(0,0,0,0.8);
+            backdrop-filter: blur(4px);
+        }
+
+        /* Custom Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none; 
+            background: transparent; 
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            margin-top: -4px; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+        
+        /* Firefox Styles */
+        input[type=range]::-moz-range-thumb {
+            height: 12px;
+            width: 12px;
+            border: none;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+        
+        input[type=range]::-moz-range-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+
+        /* === TV / REMOTE NAVIGATION STYLES === */
+        button:focus-visible, input:focus-visible {
+            outline: 4px solid var(--focus);
+            outline-offset: 4px;
+            box-shadow: 0 0 15px var(--focus);
+            transform: scale(1.1);
+            z-index: 50;
+        }
+        
+        button:focus {
+            outline: 4px solid var(--focus);
+            outline-offset: 4px;
+        }
+        
+        body:not(.user-is-tabbing) button:focus {
+            outline: none;
+            box-shadow: none;
+            transform: none;
+        }
+    </style>
+</head>
+<body class="theme-dark h-screen font-sans overflow-hidden select-none">
+
+    <!-- AUDIO ELEMENT -->
+    <audio id="ambientAudio"></audio>
+
+    <!-- === MENU SCREEN === -->
+    <div id="menu-screen" class="screen visible">
+        <div class="text-center animate-enter flex flex-col items-center">
+            <h1 class="text-6xl font-thin tracking-[0.2em] mb-2 opacity-90">BREATHE</h1>
+            
+            <!-- Technique Selector -->
+            <div class="mt-8 mb-12 w-64">
+                <div class="flex items-center justify-between mb-2">
+                    <button id="prevTechBtn" class="p-2 opacity-50 hover:opacity-100 transition rounded-full focus:opacity-100">←</button>
+                    <span id="techTitle" class="text-sm font-bold tracking-widest uppercase text-blue-300">4-7-8 RELAX</span>
+                    <button id="nextTechBtn" class="p-2 opacity-50 hover:opacity-100 transition rounded-full focus:opacity-100">→</button>
+                </div>
+                <p id="techDesc" class="text-xs opacity-60 h-8">Reduces anxiety & aids sleep.</p>
+                <button id="infoBtn" class="text-[10px] underline opacity-40 hover:opacity-100 mt-2 px-2 rounded">Why does this work?</button>
+            </div>
+            
+            <button id="enterBtn" class="px-10 py-4 bg-white/5 border border-white/20 rounded-full text-lg font-light tracking-widest hover:bg-white/10 active:scale-95 transition-all shadow-xl backdrop-blur-sm group">
+                START <span class="inline-block transition-transform group-hover:translate-x-1">→</span>
+            </button>
+        </div>
+
+        <div class="absolute bottom-8 text-[10px] opacity-30 tracking-widest">
+            SIMPLE • CALM • FREE
+        </div>
+    </div>
+
+    <!-- === APP SCREEN === -->
+    <div id="app-screen" class="screen hidden">
+        <!-- Header -->
+        <div class="absolute top-0 w-full p-6 flex justify-between items-center z-20">
+            <button id="backBtn" class="p-2 rounded-full hover:bg-white/10 transition opacity-60 hover:opacity-100" title="Back to Menu">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            
+            <div class="flex items-center gap-3">
+                <!-- VOLUME SLIDER (Hidden by default) -->
+                <div id="volumeContainer" class="flex items-center overflow-hidden transition-all duration-300 w-0 opacity-0">
+                    <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.5" class="w-20 h-4" title="Volume">
+                </div>
+
+                <!-- AUDIO BUTTON -->
+                <button id="audioBtn" class="p-2 rounded-full hover:bg-white/10 transition opacity-40 hover:opacity-100" title="Toggle Sleep Sound">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                </button>
+
+                <button id="hapticBtn" class="p-2 rounded-full hover:bg-white/10 transition opacity-60 hover:opacity-100" title="Toggle Vibration">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h1"/><path d="M2 12h1"/><path d="M5 12h1"/><path d="M18 12h1"/><path d="M11 6v12"/><path d="M8 8v8"/><path d="M14 8v8"/></svg>
+                </button>
+                <button id="themeBtn" class="p-2 rounded-full hover:bg-white/10 transition opacity-60 hover:opacity-100" title="Change Theme">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Visual -->
+        <div class="relative flex items-center justify-center">
+            <div id="circle" tabindex="0" class="circle-visual w-64 h-64 rounded-full breathing-circle flex items-center justify-center transform scale-100 cursor-pointer hover:opacity-90 transition-opacity focus:outline-none">
+                <div class="text-center pointer-events-none">
+                    <p id="instruction" class="text-3xl font-bold tracking-wider mb-2">READY</p>
+                    <p id="timer" class="text-xl opacity-75 font-mono">0</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="absolute bottom-16 flex flex-col items-center gap-4 transition-opacity duration-500" id="controlsContainer">
+            <button id="startBtn" class="px-8 py-4 bg-white/10 border border-white/30 rounded-full text-lg font-semibold tracking-wide hover:bg-white/20 active:scale-95 transition-all shadow-lg backdrop-blur-sm">
+                BEGIN
+            </button>
+            <p id="activeTechName" class="text-xs opacity-50 uppercase tracking-widest">4-7-8 Technique</p>
+        </div>
+    </div>
+
+    <!-- === INFO MODAL === -->
+    <div id="infoModal" class="fixed inset-0 z-50 hidden flex items-center justify-center modal-overlay p-4 opacity-0 transition-opacity duration-300">
+        <div class="bg-[#1a202c] border border-gray-700 p-8 rounded-2xl max-w-sm w-full shadow-2xl transform scale-95 transition-transform duration-300" id="modalContent">
+            <h2 id="modalTitle" class="text-2xl font-light tracking-widest mb-4 text-blue-300">4-7-8 RELAX</h2>
+            <div id="modalBody" class="text-sm leading-relaxed opacity-80 space-y-4">
+                <!-- Content injected via JS -->
+            </div>
+            <button id="closeModalBtn" class="mt-8 w-full py-3 bg-white/10 rounded-lg hover:bg-white/20 transition text-sm tracking-wide">CLOSE</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration Data ---
+        
+        // AUTO-GENERATED PLAYLIST (sleep1.mp3 to sleep36.mp3)
+        const playlist = Array.from({length: 36}, (_, i) => "sleep" + (i + 1) + ".mp3");
+
+        const techniques = [
+            {
+                id: '4-7-8',
+                name: '4-7-8 RELAX',
+                shortDesc: 'Reduces anxiety & aids sleep.',
+                fullDesc: '<p>This technique acts as a natural tranquilizer for the nervous system.</p><p>By extending the exhale to be twice as long as the inhale, you trigger the parasympathetic nervous system (rest and digest), effectively lowering heart rate and reducing anxiety.</p>',
+                config: { inhale: 4000, hold: 7000, exhale: 8000, hold2: 0 }
+            },
+            {
+                id: 'box',
+                name: 'BOX FOCUS',
+                shortDesc: 'Heightens performance & focus.',
+                fullDesc: '<p>Also known as "Square Breathing," this technique is used by Navy SEALs to stay calm in high-stress situations.</p><p>The equal duration of all four parts of the breath rhythm creates a powerful sense of balance and mental clarity.</p>',
+                config: { inhale: 4000, hold: 4000, exhale: 4000, hold2: 4000 }
+            },
+            {
+                id: 'balance',
+                name: 'BALANCE',
+                shortDesc: 'Stabilizes mood & heart rate.',
+                fullDesc: '<p>Often called "Coherent Breathing," this 5.5-second rhythm syncs your breathing with your heart rate variability (HRV).</p><p>It is scientifically shown to bring the heart, mind, and nervous system into a state of coherence and peak efficiency.</p>',
+                config: { inhale: 5500, hold: 0, exhale: 5500, hold2: 0 }
+            }
+        ];
+
+        // --- State ---
+        let isRunning = false;
+        let hapticsEnabled = true;
+        let audioEnabled = false;
+        let currentTrackIndex = 0;
+        
+        const themes = ['theme-dark', 'theme-nature', 'theme-light'];
+        let currentTheme = 0;
+        let currentTechIndex = 0;
+        let phase = 'idle'; 
+
+        // --- Elements ---
+        const menuScreen = document.getElementById('menu-screen');
+        const appScreen = document.getElementById('app-screen');
+        const infoModal = document.getElementById('infoModal');
+        const modalContent = document.getElementById('modalContent');
+        
+        // Menu Elements
+        const enterBtn = document.getElementById('enterBtn');
+        const prevTechBtn = document.getElementById('prevTechBtn');
+        const nextTechBtn = document.getElementById('nextTechBtn');
+        const techTitle = document.getElementById('techTitle');
+        const techDesc = document.getElementById('techDesc');
+        const infoBtn = document.getElementById('infoBtn');
+        
+        // App Elements
+        const backBtn = document.getElementById('backBtn');
+        const circle = document.getElementById('circle');
+        const instruction = document.getElementById('instruction');
+        const timerText = document.getElementById('timer');
+        const startBtn = document.getElementById('startBtn');
+        const controlsContainer = document.getElementById('controlsContainer');
+        const activeTechName = document.getElementById('activeTechName');
+        
+        const hapticBtn = document.getElementById('hapticBtn');
+        const themeBtn = document.getElementById('themeBtn');
+        const audioBtn = document.getElementById('audioBtn');
+        const ambientAudio = document.getElementById('ambientAudio');
+        const volumeContainer = document.getElementById('volumeContainer');
+        const volumeSlider = document.getElementById('volumeSlider');
+        
+        // Modal Elements
+        const modalTitle = document.getElementById('modalTitle');
+        const modalBody = document.getElementById('modalBody');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const body = document.body;
+
+        // --- Keyboard / Remote Handling (Input Detection) ---
+        function handleInput(e) {
+            body.classList.add('user-is-tabbing');
+        }
+        window.addEventListener('keydown', handleInput);
+        window.addEventListener('mousedown', () => body.classList.remove('user-is-tabbing'));
+
+        // --- Remote Control Navigation Logic ---
+        window.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'Escape':
+                case 'Backspace':
+                    if (!infoModal.classList.contains('hidden')) {
+                        closeModal();
+                    } else if (appScreen.classList.contains('visible')) {
+                        if (isRunning) stopBreathing();
+                        returnToMenu();
+                    }
+                    break;
+                case 'MediaPlayPause':
+                    if (appScreen.classList.contains('visible')) {
+                        if (isRunning) stopBreathing();
+                        else startBreathing();
+                    }
+                    break;
+                case 'Enter':
+                    if (document.activeElement === circle && isRunning) {
+                        stopBreathing();
+                    }
+                    break;
+            }
+        });
+
+        // --- Navigation & UI Logic ---
+        function updateTechDisplay() {
+            const tech = techniques[currentTechIndex];
+            techTitle.innerText = tech.name;
+            techDesc.innerText = tech.shortDesc;
+            activeTechName.innerText = tech.name + " TECHNIQUE";
+        }
+
+        prevTechBtn.addEventListener('click', () => {
+            currentTechIndex = (currentTechIndex - 1 + techniques.length) % techniques.length;
+            updateTechDisplay();
+        });
+
+        nextTechBtn.addEventListener('click', () => {
+            currentTechIndex = (currentTechIndex + 1) % techniques.length;
+            updateTechDisplay();
+        });
+
+        enterBtn.addEventListener('click', () => {
+            menuScreen.classList.remove('visible');
+            menuScreen.classList.add('hidden');
+            appScreen.classList.remove('hidden');
+            appScreen.classList.add('visible');
+            setTimeout(() => startBtn.focus(), 100);
+        });
+
+        function returnToMenu() {
+            appScreen.classList.remove('visible');
+            appScreen.classList.add('hidden');
+            menuScreen.classList.remove('hidden');
+            menuScreen.classList.add('visible');
+            setTimeout(() => enterBtn.focus(), 100);
+        }
+
+        backBtn.addEventListener('click', () => {
+            if (isRunning) stopBreathing();
+            returnToMenu();
+        });
+
+        // --- Modal Logic ---
+        infoBtn.addEventListener('click', () => {
+            const tech = techniques[currentTechIndex];
+            modalTitle.innerText = tech.name;
+            modalBody.innerHTML = tech.fullDesc;
+            infoModal.classList.remove('hidden');
+            setTimeout(() => {
+                infoModal.classList.remove('opacity-0');
+                modalContent.classList.remove('scale-95');
+                modalContent.classList.add('scale-100');
+                closeModalBtn.focus();
+            }, 10);
+        });
+
+        const closeModal = () => {
+            infoModal.classList.add('opacity-0');
+            modalContent.classList.remove('scale-100');
+            modalContent.classList.add('scale-95');
+            setTimeout(() => {
+                infoModal.classList.add('hidden');
+                infoBtn.focus();
+            }, 300);
+        };
+
+        closeModalBtn.addEventListener('click', closeModal);
+        infoModal.addEventListener('click', (e) => {
+            if (e.target === infoModal) closeModal();
+        });
+
+        // --- Breathing Engine ---
+        function startBreathing() {
+            if (isRunning) return;
+            isRunning = true;
+            controlsContainer.style.opacity = '0';
+            controlsContainer.style.pointerEvents = 'none';
+            circle.focus();
+            runCycle();
+        }
+
+        function runCycle() {
+            if (!isRunning) return;
+            const config = techniques[currentTechIndex].config;
+            setPhase('Inhale', config.inhale, 1.5); 
+            vibrate([50]); 
+            setTimeout(() => {
+                if (!isRunning) return;
+                if (config.hold > 0) {
+                    setPhase('Hold', config.hold, 1.5); 
+                    vibrate([30, 30]);
+                    setTimeout(() => { doExhale(config); }, config.hold);
+                } else { doExhale(config); }
+            }, config.inhale);
+        }
+
+        function doExhale(config) {
+            if (!isRunning) return;
+            setPhase('Exhale', config.exhale, 1.0);
+            vibrate([50, 50, 50]);
+            setTimeout(() => {
+                if (!isRunning) return;
+                if (config.hold2 > 0) {
+                    setPhase('Hold', config.hold2, 1.0);
+                    vibrate([30, 30]);
+                    setTimeout(() => { if (!isRunning) return; runCycle(); }, config.hold2);
+                } else { runCycle(); }
+            }, config.exhale);
+        }
+
+        function setPhase(text, duration, scale) {
+            phase = text;
+            instruction.innerText = text.toUpperCase();
+            circle.style.transition = `transform ${duration}ms linear`;
+            circle.style.transform = `scale(${scale})`;
+            let seconds = duration / 1000;
+            timerText.innerText = seconds;
+            const end = Date.now() + duration;
+            function updateTimer() {
+                const now = Date.now();
+                const remaining = Math.ceil((end - now) / 1000);
+                if (remaining >= 0 && phase === text && isRunning) {
+                    timerText.innerText = remaining;
+                    requestAnimationFrame(updateTimer);
+                }
+            }
+            requestAnimationFrame(updateTimer);
+        }
+
+        function stopBreathing() {
+            isRunning = false;
+            controlsContainer.style.opacity = '1';
+            controlsContainer.style.pointerEvents = 'auto';
+            instruction.innerText = "READY";
+            timerText.innerText = "0";
+            circle.style.transition = 'transform 0.5s ease-out';
+            circle.style.transform = "scale(1)";
+            phase = 'idle';
+            startBtn.focus();
+        }
+
+        // --- Utilities & Playlist ---
+        function vibrate(pattern) {
+            if (hapticsEnabled && navigator.vibrate) navigator.vibrate(pattern);
+        }
+
+        function playNextTrack() {
+            currentTrackIndex = (currentTrackIndex + 1) % playlist.length;
+            loadAndPlayTrack();
+        }
+
+        function loadAndPlayTrack() {
+            if (playlist.length === 0) return;
+            ambientAudio.src = playlist[currentTrackIndex];
+            ambientAudio.play().catch(e => console.log("Playback interrupted", e));
+        }
+
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            audioBtn.style.opacity = audioEnabled ? '1' : '0.4';
+            if (audioEnabled) {
+                volumeContainer.classList.remove('w-0', 'opacity-0');
+                volumeContainer.classList.add('w-20', 'opacity-100');
+                ambientAudio.volume = volumeSlider.value;
+                if (!ambientAudio.src || ambientAudio.src === window.location.href) loadAndPlayTrack();
+                else ambientAudio.play().catch(() => loadAndPlayTrack());
+            } else {
+                volumeContainer.classList.add('w-0', 'opacity-0');
+                volumeContainer.classList.remove('w-20', 'opacity-100');
+                ambientAudio.pause();
+            }
+        }
+
+        // --- Listeners ---
+        startBtn.addEventListener('click', startBreathing);
+        circle.addEventListener('click', () => { if (isRunning) stopBreathing(); });
+        hapticBtn.addEventListener('click', () => {
+            hapticsEnabled = !hapticsEnabled;
+            hapticBtn.style.opacity = hapticsEnabled ? '1' : '0.4';
+            if (hapticsEnabled) vibrate(50);
+        });
+        audioBtn.addEventListener('click', toggleAudio);
+        volumeSlider.addEventListener('input', (e) => { ambientAudio.volume = e.target.value; });
+        ambientAudio.addEventListener('ended', playNextTrack);
+        themeBtn.addEventListener('click', () => {
+            body.classList.remove(themes[currentTheme]);
+            currentTheme = (currentTheme + 1) % themes.length;
+            body.classList.add(themes[currentTheme]);
+        });
+
+        // Initialize
+        updateTechDisplay();
+        if ('serviceWorker' in navigator && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
+            navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
+    </script>
+</body>
+</html>
